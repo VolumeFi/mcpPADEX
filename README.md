@@ -1,19 +1,20 @@
 # Paloma DEX MCP Server
 
-A Model Context Protocol (MCP) server that enables AI agents to autonomously trade on Paloma DEX across 7 EVM chains.
+A Model Context Protocol (MCP) server that enables AI agents to interact with Paloma DEX across 7 EVM chains. Built with FastMCP framework for modern MCP implementations.
 
 ## Overview
 
-This MCP server provides AI agents with tools to perform decentralized trading operations on Paloma DEX, supporting cross-chain functionality across Ethereum, Arbitrum, Optimism, Base, BSC, Polygon, and Gnosis chains. The server prioritizes automation over security by enabling autonomous transaction execution through environment-based private key management.
+This MCP server provides AI agents with tools to access blockchain data and prepare for decentralized trading operations on Paloma DEX. The server supports cross-chain functionality across Ethereum, Arbitrum, Optimism, Base, BSC, Polygon, and Gnosis chains.
 
 ## Features
 
-### Core Trading Tools
+### Available Tools
 
-- **`buy_token`**: Purchase ETF tokens or PUSD using any input token
-- **`sell_token`**: Sell ETF tokens or PUSD back to other tokens  
-- **`get_balance`**: Check token balances across all 7 supported chains
-- **`get_price`**: Get current token prices
+- **`get_account_info`**: Get account address and native token balances across all chains
+- **`get_pusd_balance`**: Get PUSD token balance on a specific chain
+- **`get_chain_info`**: Get detailed information about a specific blockchain
+- **`list_supported_chains`**: List all supported chains with their configurations
+- **`get_address_balances`**: Get balances for any Ethereum address across all chains
 
 ### Chain Support
 
@@ -28,12 +29,12 @@ Supports all 7 EVM chains used by Paloma DEX:
 
 ### Key Capabilities
 
-- **Autonomous Trading**: AI agents can execute transactions independently
-- **Cross-Chain Support**: Works across all Paloma DEX supported chains
-- **Gas Management**: Handles gas estimation and protocol fees automatically
-- **Token Approvals**: Automatic approval handling for ERC20 tokens
-- **Error Handling**: Comprehensive transaction error management
-- **Contract Integration**: Ready integration with PUSD and ETF connector contracts
+- **Multi-Chain Data Access**: Query balances and chain information across all 7 supported chains
+- **FastMCP Framework**: Built with modern MCP implementation for better performance
+- **Web3 Integration**: Direct blockchain interaction via Web3 clients
+- **Error Handling**: Comprehensive error management and validation
+- **Address Validation**: Ethereum address format validation
+- **Contract Integration**: Integration with PUSD token contracts
 
 ## Installation
 
@@ -82,56 +83,55 @@ Supports all 7 EVM chains used by Paloma DEX:
 ### Running the Server
 
 ```bash
-uv run python main.py
+uv run padex.py
 ```
 
 The server will start and listen for MCP protocol messages via stdin/stdout.
 
 ### Tool Examples
 
-#### Buy Tokens
+#### Get Account Information
 ```json
 {
-  "tool": "buy_token",
-  "arguments": {
-    "chain_id": "1",
-    "input_token_address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-    "output_token_address": "0x...",
-    "input_amount": "100.0",
-    "slippage": 2.0
-  }
+  "tool": "get_account_info",
+  "arguments": {}
 }
 ```
 
-#### Sell Tokens
+#### Get PUSD Balance
 ```json
 {
-  "tool": "sell_token",
-  "arguments": {
-    "chain_id": "1", 
-    "token_address": "0x...",
-    "amount": "50.0"
-  }
-}
-```
-
-#### Check Balances
-```json
-{
-  "tool": "get_balance",
+  "tool": "get_pusd_balance",
   "arguments": {
     "chain_id": "1"
   }
 }
 ```
 
-#### Get Prices
+#### Get Chain Information
 ```json
 {
-  "tool": "get_price",
+  "tool": "get_chain_info",
   "arguments": {
-    "chain_id": "1",
-    "token_address": "0x..."
+    "chain_id": "42161"
+  }
+}
+```
+
+#### List All Supported Chains
+```json
+{
+  "tool": "list_supported_chains",
+  "arguments": {}
+}
+```
+
+#### Get Address Balances
+```json
+{
+  "tool": "get_address_balances",
+  "arguments": {
+    "address": "0x742d35Cc6648C4532b6C4EC000e40fd94aea4966"
   }
 }
 ```
@@ -140,56 +140,82 @@ The server will start and listen for MCP protocol messages via stdin/stdout.
 
 ### Core Components
 
-- **`padex.py`**: Main MCP server implementation with all trading tools
-- **`main.py`**: Entry point that launches the MCP server
-- **Contract ABIs**: Simplified ABIs for PUSD and ETF connector interactions
+- **`padex.py`**: Main MCP server implementation using FastMCP framework
+- **`main.py`**: Simple entry point (Hello World)
+- **FastMCP Framework**: Modern MCP server implementation with lifecycle management
 - **Chain Configuration**: Complete configuration for all 7 supported chains
+- **Web3 Clients**: Individual Web3 connections for each blockchain
+
+### Architecture Pattern
+
+The server uses FastMCP's lifespan context management:
+
+```python
+@asynccontextmanager
+async def paloma_dex_lifespan(server: FastMCP) -> AsyncIterator[PalomaDEXContext]:
+    # Initialize Web3 clients and resources
+    yield context
+    # Cleanup resources
+```
 
 ### Security Considerations
 
 ⚠️ **Important Security Notes**:
-- This implementation prioritizes automation over security
-- Private keys are stored in environment variables for autonomous operation
+- Private keys are stored in environment variables
 - Ensure your `.env` file is never committed to version control
-- Consider using more secure key management for production use
 - The `.gitignore` file excludes `.env` by default
+- Consider using more secure key management for production use
 
 ### Dependencies
 
+- **mcp[cli]**: Model Context Protocol with FastMCP framework
 - **web3**: Ethereum blockchain interaction
 - **eth-account**: Private key and transaction signing
 - **eth-abi**: ABI encoding for contract calls
 - **httpx**: HTTP client for API interactions
-- **mcp**: Model Context Protocol implementation
 - **python-dotenv**: Environment variable management
 
 ## API Integrations
 
 The server integrates with:
-- **Paloma DEX API**: For ETF data and custom pricing
-- **Moralis API**: For balance and price data (optional)
-- **Uniswap Protocol**: For swap path generation and routing
+- **Blockchain RPC Endpoints**: Direct connection to each supported chain
+- **ERC-20 Token Contracts**: For PUSD balance queries
+- **Future**: Paloma DEX API integration for trading operations
 
 ## Development
 
 ### Project Structure
 ```
 mcpPADEX/
-├── padex.py              # Main MCP server implementation
-├── main.py               # Entry point
-├── pyproject.toml        # Project dependencies
-├── .env.example          # Environment variable template
-├── .gitignore           # Git ignore rules
-└── README.md            # This file
+├── padex.py                      # Main FastMCP server implementation
+├── padex_old.py                  # Previous implementation (backup)
+├── main.py                       # Simple entry point
+├── pyproject.toml                # Project dependencies
+├── .env                          # Environment variables (not committed)
+├── .gitignore                    # Git ignore rules
+├── MCP_DOCUMENTATION.md          # MCP protocol reference
+├── MCP_PYTHON_SDK_REFERENCE.md   # FastMCP SDK reference
+├── mcp-llms-full-reference.txt   # Complete MCP reference
+└── README.md                     # This file
 ```
 
 ### Adding New Features
 
-The server is designed to be extensible. To add new tools:
+The server uses FastMCP decorators for easy extension:
 
-1. Define the tool in the `handle_list_tools()` method
-2. Implement the tool handler in `handle_call_tool()`
-3. Add the corresponding async method to the `PalomaDEXServer` class
+```python
+@mcp.tool()
+async def new_tool(ctx: Context, param: str) -> str:
+    """Tool description"""
+    # Implementation
+    return result
+
+@mcp.resource("resource://pattern/{id}")
+async def new_resource(id: str) -> str:
+    """Resource description"""
+    # Implementation
+    return data
+```
 
 ## Contributing
 

@@ -9,6 +9,6 @@ dependencies = [
     "mcp[cli]>=1.9.4",
     "web3>=7.0.0",
     "eth-account>=0.13.0",
-    "eth-abi>=6.0.0",
+    "eth-abi>=5.0.0,<6.0.0",
     "python-dotenv>=1.0.0",
 ]
