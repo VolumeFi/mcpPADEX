@@ -10,11 +10,19 @@ This MCP server provides AI agents with tools to access blockchain data and prep
 
 ### Available Tools
 
+#### Blockchain Data Access
 - **`get_account_info`**: Get account address and native token balances across all chains
 - **`get_pusd_balance`**: Get PUSD token balance on a specific chain
 - **`get_chain_info`**: Get detailed information about a specific blockchain
 - **`list_supported_chains`**: List all supported chains with their configurations
 - **`get_address_balances`**: Get balances for any Ethereum address across all chains
+
+#### ETF Trading Tools
+- **`get_etf_tokens`**: Get available ETF tokens on a specific chain
+- **`get_etf_price`**: Get buy and sell prices for an ETF token
+- **`get_etf_balance`**: Get ETF token balance for a wallet address
+- **`buy_etf_token`**: Buy ETF tokens using input tokens (simulation)
+- **`sell_etf_token`**: Sell ETF tokens back to base currency (simulation)
 
 ### Chain Support
 
@@ -30,11 +38,13 @@ Supports all 7 EVM chains used by Paloma DEX:
 ### Key Capabilities
 
 - **Multi-Chain Data Access**: Query balances and chain information across all 7 supported chains
+- **ETF Trading Support**: Complete ETF token ecosystem integration with Paloma DEX API
 - **FastMCP Framework**: Built with modern MCP implementation for better performance
 - **Web3 Integration**: Direct blockchain interaction via Web3 clients
+- **Transaction Simulation**: Safe simulation of trading operations before execution
 - **Error Handling**: Comprehensive error management and validation
 - **Address Validation**: Ethereum address format validation
-- **Contract Integration**: Integration with PUSD token contracts
+- **Contract Integration**: Integration with PUSD and ETF connector contracts
 
 ## Installation
 
@@ -136,6 +146,65 @@ The server will start and listen for MCP protocol messages via stdin/stdout.
 }
 ```
 
+#### Get Available ETF Tokens
+```json
+{
+  "tool": "get_etf_tokens",
+  "arguments": {
+    "chain_id": "1"
+  }
+}
+```
+
+#### Get ETF Token Price
+```json
+{
+  "tool": "get_etf_price",
+  "arguments": {
+    "chain_id": "1",
+    "etf_token_address": "0x1234567890123456789012345678901234567890"
+  }
+}
+```
+
+#### Get ETF Token Balance
+```json
+{
+  "tool": "get_etf_balance",
+  "arguments": {
+    "chain_id": "1",
+    "etf_token_address": "0x1234567890123456789012345678901234567890",
+    "wallet_address": "0x742d35Cc6648C4532b6C4EC000e40fd94aea4966"
+  }
+}
+```
+
+#### Buy ETF Tokens (Simulation)
+```json
+{
+  "tool": "buy_etf_token",
+  "arguments": {
+    "chain_id": "1",
+    "etf_token_address": "0x1234567890123456789012345678901234567890",
+    "input_token_address": "native",
+    "input_amount": "1.0",
+    "slippage": 2.0
+  }
+}
+```
+
+#### Sell ETF Tokens (Simulation)
+```json
+{
+  "tool": "sell_etf_token",
+  "arguments": {
+    "chain_id": "1",
+    "etf_token_address": "0x1234567890123456789012345678901234567890",
+    "etf_amount": "10.0"
+  }
+}
+```
+
 ## Architecture
 
 ### Core Components
@@ -179,8 +248,9 @@ async def paloma_dex_lifespan(server: FastMCP) -> AsyncIterator[PalomaDEXContext
 
 The server integrates with:
 - **Blockchain RPC Endpoints**: Direct connection to each supported chain
-- **ERC-20 Token Contracts**: For PUSD balance queries
-- **Future**: Paloma DEX API integration for trading operations
+- **ERC-20 Token Contracts**: For PUSD and ETF token balance queries
+- **Paloma DEX API**: Live integration for ETF token data and pricing
+- **ETF Connector Contracts**: Smart contracts for ETF trading operations
 
 ## Development
 

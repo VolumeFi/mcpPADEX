@@ -204,6 +204,56 @@ ERC20_ABI = [
         "name": "symbol",
         "outputs": [{"name": "", "type": "string"}],
         "type": "function"
+    },
+    {
+        "constant": False,
+        "inputs": [
+            {"name": "spender", "type": "address"},
+            {"name": "amount", "type": "uint256"}
+        ],
+        "name": "approve",
+        "outputs": [{"name": "", "type": "bool"}],
+        "type": "function"
+    },
+    {
+        "constant": True,
+        "inputs": [
+            {"name": "owner", "type": "address"},
+            {"name": "spender", "type": "address"}
+        ],
+        "name": "allowance",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "type": "function"
+    }
+]
+
+# ETF Connector ABI (key functions)
+ETF_CONNECTOR_ABI = [
+    {
+        "name": "buy",
+        "type": "function",
+        "inputs": [
+            {"name": "etf_token", "type": "address"},
+            {"name": "etf_amount", "type": "uint256"},
+            {"name": "usd_amount", "type": "uint256"},
+            {"name": "recipient", "type": "address"},
+            {"name": "path", "type": "bytes"},
+            {"name": "deadline", "type": "uint256"}
+        ],
+        "outputs": [],
+        "stateMutability": "payable"
+    },
+    {
+        "name": "sell",
+        "type": "function",
+        "inputs": [
+            {"name": "etf_token", "type": "address"},
+            {"name": "etf_amount", "type": "uint256"},
+            {"name": "deadline", "type": "uint256"},
+            {"name": "recipient", "type": "address"}
+        ],
+        "outputs": [],
+        "stateMutability": "payable"
     }
 ]
 
@@ -431,6 +481,364 @@ async def get_address_balances(ctx: Context, address: str) -> str:
     except Exception as e:
         logger.error(f"Error getting address balances: {e}")
         return f"Error getting address balances: {str(e)}"
+
+# Helper function for chain name mapping
+def get_chain_name_for_api(chain_id: str) -> Optional[str]:
+    """Map chain ID to chain name for Paloma DEX API calls."""
+    chain_name_mapping = {
+        "1": "ethereum",
+        "10": "optimism", 
+        "56": "bsc",
+        "100": "gnosis",
+        "137": "polygon",
+        "8453": "base",
+        "42161": "arbitrum"
+    }
+    return chain_name_mapping.get(chain_id)
+
+@mcp.tool()
+async def get_etf_tokens(ctx: Context, chain_id: str) -> str:
+    """Get available ETF tokens on a specific chain.
+    
+    Args:
+        chain_id: Chain ID (1, 10, 56, 100, 137, 8453, 42161)
+    
+    Returns:
+        JSON string with available ETF tokens and their information.
+    """
+    try:
+        paloma_ctx = ctx.request_context.lifespan_context
+        
+        if chain_id not in CHAIN_CONFIGS:
+            return f"Error: Unsupported chain ID {chain_id}"
+        
+        config = CHAIN_CONFIGS[chain_id]
+        
+        chain_name = get_chain_name_for_api(chain_id)
+        if not chain_name:
+            return f"Error: Chain name mapping not found for chain ID {chain_id}"
+        
+        # Call Paloma DEX API to get ETF tokens
+        api_url = f"https://api.palomadex.com/etfapi/v1/etf?chain_id={chain_name}"
+        
+        async with paloma_ctx.http_client.get(api_url) as response:
+            if response.status_code == 200:
+                etf_data = response.json()
+                
+                result = {
+                    "chain": config.name,
+                    "chain_id": config.chain_id,
+                    "etf_connector": config.etf_connector or "Not configured",
+                    "etf_tokens": etf_data
+                }
+                
+                return json.dumps(result, indent=2)
+            else:
+                return f"Error: Failed to fetch ETF tokens. Status: {response.status_code}"
+                
+    except Exception as e:
+        logger.error(f"Error getting ETF tokens: {e}")
+        return f"Error getting ETF tokens: {str(e)}"
+
+@mcp.tool()
+async def get_etf_price(ctx: Context, chain_id: str, etf_token_address: str) -> str:
+    """Get buy and sell prices for an ETF token.
+    
+    Args:
+        chain_id: Chain ID (1, 10, 56, 100, 137, 8453, 42161)
+        etf_token_address: Address of the ETF token
+    
+    Returns:
+        JSON string with buy and sell prices for the ETF token.
+    """
+    try:
+        paloma_ctx = ctx.request_context.lifespan_context
+        
+        if chain_id not in CHAIN_CONFIGS:
+            return f"Error: Unsupported chain ID {chain_id}"
+        
+        config = CHAIN_CONFIGS[chain_id]
+        
+        # Validate ETF token address
+        if not Web3.is_address(etf_token_address):
+            return f"Error: Invalid ETF token address format: {etf_token_address}"
+        
+        chain_name = get_chain_name_for_api(chain_id)
+        if not chain_name:
+            return f"Error: Chain name mapping not found for chain ID {chain_id}"
+        
+        # Call Paloma DEX API to get custom pricing
+        api_url = f"https://api.palomadex.com/etfapi/v1/customindexprice?chain_id={chain_name}&token_evm_address={etf_token_address}"
+        
+        async with paloma_ctx.http_client.get(api_url) as response:
+            if response.status_code == 200:
+                price_data = response.json()
+                
+                result = {
+                    "chain": config.name,
+                    "chain_id": config.chain_id,
+                    "etf_token_address": etf_token_address,
+                    "pricing": price_data,
+                    "timestamp": asyncio.get_event_loop().time()
+                }
+                
+                return json.dumps(result, indent=2)
+            else:
+                return f"Error: Failed to fetch ETF price. Status: {response.status_code}"
+                
+    except Exception as e:
+        logger.error(f"Error getting ETF price: {e}")
+        return f"Error getting ETF price: {str(e)}"
+
+@mcp.tool()
+async def get_etf_balance(ctx: Context, chain_id: str, etf_token_address: str, wallet_address: Optional[str] = None) -> str:
+    """Get ETF token balance for a wallet address.
+    
+    Args:
+        chain_id: Chain ID (1, 10, 56, 100, 137, 8453, 42161)
+        etf_token_address: Address of the ETF token
+        wallet_address: Wallet address to check (defaults to server wallet)
+    
+    Returns:
+        JSON string with ETF token balance information.
+    """
+    try:
+        paloma_ctx = ctx.request_context.lifespan_context
+        
+        if chain_id not in CHAIN_CONFIGS:
+            return f"Error: Unsupported chain ID {chain_id}"
+        
+        config = CHAIN_CONFIGS[chain_id]
+        
+        # Use server wallet if no address provided
+        if wallet_address is None:
+            wallet_address = paloma_ctx.address
+        
+        # Validate addresses
+        if not Web3.is_address(etf_token_address):
+            return f"Error: Invalid ETF token address format: {etf_token_address}"
+        
+        if not Web3.is_address(wallet_address):
+            return f"Error: Invalid wallet address format: {wallet_address}"
+        
+        if chain_id not in paloma_ctx.web3_clients:
+            return f"Error: Web3 client not available for {config.name}"
+        
+        web3 = paloma_ctx.web3_clients[chain_id]
+        etf_contract = web3.eth.contract(
+            address=etf_token_address,
+            abi=ERC20_ABI
+        )
+        
+        # Get token info
+        try:
+            balance_wei = etf_contract.functions.balanceOf(wallet_address).call()
+            decimals = etf_contract.functions.decimals().call()
+            symbol = etf_contract.functions.symbol().call()
+            balance = balance_wei / (10 ** decimals)
+        except Exception as e:
+            return f"Error: Failed to read ETF token contract: {str(e)}"
+        
+        balance_info = {
+            "chain": config.name,
+            "chain_id": config.chain_id,
+            "wallet_address": wallet_address,
+            "etf_token_address": etf_token_address,
+            "symbol": symbol,
+            "balance": str(balance),
+            "balance_wei": str(balance_wei),
+            "decimals": decimals
+        }
+        
+        return json.dumps(balance_info, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Error getting ETF balance: {e}")
+        return f"Error getting ETF balance: {str(e)}"
+
+@mcp.tool()
+async def buy_etf_token(ctx: Context, chain_id: str, etf_token_address: str, input_token_address: str, input_amount: str, slippage: float = 2.0) -> str:
+    """Buy ETF tokens using input tokens (simulation only - no actual transaction).
+    
+    Args:
+        chain_id: Chain ID (1, 10, 56, 100, 137, 8453, 42161)
+        etf_token_address: Address of the ETF token to buy
+        input_token_address: Address of token to spend (use 'native' for ETH/BNB/MATIC/xDAI)
+        input_amount: Amount of input token to spend (in token units, e.g. '1.5')
+        slippage: Slippage tolerance as percentage (default: 2.0)
+    
+    Returns:
+        JSON string with transaction simulation details.
+    """
+    try:
+        paloma_ctx = ctx.request_context.lifespan_context
+        
+        if chain_id not in CHAIN_CONFIGS:
+            return f"Error: Unsupported chain ID {chain_id}"
+        
+        config = CHAIN_CONFIGS[chain_id]
+        
+        if not config.etf_connector:
+            return f"Error: ETF connector not configured for {config.name}"
+        
+        # Validate addresses
+        if not Web3.is_address(etf_token_address):
+            return f"Error: Invalid ETF token address format: {etf_token_address}"
+        
+        if input_token_address != 'native' and not Web3.is_address(input_token_address):
+            return f"Error: Invalid input token address format: {input_token_address}"
+        
+        try:
+            input_amount_float = float(input_amount)
+            if input_amount_float <= 0:
+                raise ValueError("Amount must be positive")
+        except ValueError:
+            return f"Error: Invalid input amount: {input_amount}"
+        
+        # Get ETF token information
+        if chain_id not in paloma_ctx.web3_clients:
+            return f"Error: Web3 client not available for {config.name}"
+        
+        web3 = paloma_ctx.web3_clients[chain_id]
+        
+        try:
+            etf_contract = web3.eth.contract(address=etf_token_address, abi=ERC20_ABI)
+            etf_symbol = etf_contract.functions.symbol().call()
+            etf_decimals = etf_contract.functions.decimals().call()
+        except Exception as e:
+            return f"Error: Failed to read ETF token contract: {str(e)}"
+        
+        # Get input token information
+        if input_token_address == 'native':
+            input_symbol = "ETH" if chain_id == ChainID.ETHEREUM_MAIN else config.name.split()[0]
+            input_decimals = 18
+        else:
+            try:
+                input_contract = web3.eth.contract(address=input_token_address, abi=ERC20_ABI)
+                input_symbol = input_contract.functions.symbol().call()
+                input_decimals = input_contract.functions.decimals().call()
+            except Exception as e:
+                return f"Error: Failed to read input token contract: {str(e)}"
+        
+        # Simulate transaction details (no actual execution)
+        simulation_result = {
+            "operation": "buy_etf_token",
+            "chain": config.name,
+            "chain_id": config.chain_id,
+            "etf_connector": config.etf_connector,
+            "input_token": {
+                "address": input_token_address,
+                "symbol": input_symbol,
+                "amount": input_amount,
+                "decimals": input_decimals
+            },
+            "output_token": {
+                "address": etf_token_address,
+                "symbol": etf_symbol,
+                "decimals": etf_decimals
+            },
+            "slippage": slippage,
+            "status": "simulation",
+            "note": "This is a simulation. Actual trading requires additional path generation and approval steps.",
+            "next_steps": [
+                "1. Get swap path via Uniswap for price calculation",
+                "2. Approve input token spending to ETF connector",
+                "3. Call ETF connector buy() function with proper parameters",
+                "4. Handle gas fees and transaction confirmation"
+            ]
+        }
+        
+        return json.dumps(simulation_result, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Error in buy ETF token simulation: {e}")
+        return f"Error in buy ETF token simulation: {str(e)}"
+
+@mcp.tool()
+async def sell_etf_token(ctx: Context, chain_id: str, etf_token_address: str, etf_amount: str) -> str:
+    """Sell ETF tokens back to base currency (simulation only - no actual transaction).
+    
+    Args:
+        chain_id: Chain ID (1, 10, 56, 100, 137, 8453, 42161)
+        etf_token_address: Address of the ETF token to sell
+        etf_amount: Amount of ETF tokens to sell (in token units, e.g. '10.5')
+    
+    Returns:
+        JSON string with transaction simulation details.
+    """
+    try:
+        paloma_ctx = ctx.request_context.lifespan_context
+        
+        if chain_id not in CHAIN_CONFIGS:
+            return f"Error: Unsupported chain ID {chain_id}"
+        
+        config = CHAIN_CONFIGS[chain_id]
+        
+        if not config.etf_connector:
+            return f"Error: ETF connector not configured for {config.name}"
+        
+        # Validate addresses
+        if not Web3.is_address(etf_token_address):
+            return f"Error: Invalid ETF token address format: {etf_token_address}"
+        
+        try:
+            etf_amount_float = float(etf_amount)
+            if etf_amount_float <= 0:
+                raise ValueError("Amount must be positive")
+        except ValueError:
+            return f"Error: Invalid ETF amount: {etf_amount}"
+        
+        # Get ETF token information
+        if chain_id not in paloma_ctx.web3_clients:
+            return f"Error: Web3 client not available for {config.name}"
+        
+        web3 = paloma_ctx.web3_clients[chain_id]
+        
+        try:
+            etf_contract = web3.eth.contract(address=etf_token_address, abi=ERC20_ABI)
+            etf_symbol = etf_contract.functions.symbol().call()
+            etf_decimals = etf_contract.functions.decimals().call()
+            
+            # Check current balance
+            balance_wei = etf_contract.functions.balanceOf(paloma_ctx.address).call()
+            balance = balance_wei / (10 ** etf_decimals)
+            
+        except Exception as e:
+            return f"Error: Failed to read ETF token contract: {str(e)}"
+        
+        # Check if user has sufficient balance
+        if etf_amount_float > balance:
+            return f"Error: Insufficient balance. You have {balance} {etf_symbol}, trying to sell {etf_amount}"
+        
+        # Simulate transaction details (no actual execution)
+        simulation_result = {
+            "operation": "sell_etf_token",
+            "chain": config.name,
+            "chain_id": config.chain_id,
+            "etf_connector": config.etf_connector,
+            "etf_token": {
+                "address": etf_token_address,
+                "symbol": etf_symbol,
+                "amount_to_sell": etf_amount,
+                "current_balance": str(balance),
+                "decimals": etf_decimals
+            },
+            "recipient": paloma_ctx.address,
+            "status": "simulation",
+            "note": "This is a simulation. Actual trading requires approval and proper transaction execution.",
+            "next_steps": [
+                "1. Approve ETF token spending to ETF connector",
+                "2. Call ETF connector sell() function with deadline parameter",
+                "3. Handle gas fees and transaction confirmation",
+                "4. Receive proceeds in base currency"
+            ]
+        }
+        
+        return json.dumps(simulation_result, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Error in sell ETF token simulation: {e}")
+        return f"Error in sell ETF token simulation: {str(e)}"
 
 async def main():
     """Main function to run the MCP server."""
