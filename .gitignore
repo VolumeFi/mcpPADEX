@@ -23,3 +23,10 @@ wheels/
 # OS
 .DS_Store
 Thumbs.db
+
+#Context
+CLAUDE.md
+ExampleMcpServer.md
+MCP_PYTHON_SDK_REFERENCE.md
+mcp-llms-full-reference.txt
+PALOMA_DEX_MCP_REFERENCE.md
