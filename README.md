@@ -205,6 +205,6 @@ This software is provided "as is" without warranty. Trading cryptocurrencies inv
 
 ## Support
 
-For questions about Paloma DEX integration, consult the [Paloma DEX documentation](https://docs.paloma.org/) or reach out to the Paloma team.
+For questions about Paloma DEX integration, consult the [Paloma DEX documentation](https://docs.palomachain.com/) or reach out to the Paloma team.
 
 For MCP-related questions, see the [Model Context Protocol documentation](https://modelcontextprotocol.io/).
