@@ -355,7 +355,8 @@ async def get_chain_info(ctx: Context, chain_id: str) -> str:
         paloma_ctx = ctx.request_context.lifespan_context
         
         if chain_id not in CHAIN_CONFIGS:
-            return f"Error: Unsupported chain ID {chain_id}"
+            available_chains = [str(k) for k in CHAIN_CONFIGS.keys()]
+            return f"Error: Unsupported chain ID '{chain_id}'. Available: {available_chains}"
         
         config = CHAIN_CONFIGS[chain_id]
         
@@ -521,20 +522,20 @@ async def get_etf_tokens(ctx: Context, chain_id: str) -> str:
         # Call Paloma DEX API to get ETF tokens
         api_url = f"https://api.palomadex.com/etfapi/v1/etf?chain_id={chain_name}"
         
-        async with paloma_ctx.http_client.get(api_url) as response:
-            if response.status_code == 200:
-                etf_data = response.json()
-                
-                result = {
-                    "chain": config.name,
-                    "chain_id": config.chain_id,
-                    "etf_connector": config.etf_connector or "Not configured",
-                    "etf_tokens": etf_data
-                }
-                
-                return json.dumps(result, indent=2)
-            else:
-                return f"Error: Failed to fetch ETF tokens. Status: {response.status_code}"
+        response = await paloma_ctx.http_client.get(api_url)
+        if response.status_code == 200:
+            etf_data = response.json()
+            
+            result = {
+                "chain": config.name,
+                "chain_id": config.chain_id,
+                "etf_connector": config.etf_connector or "Not configured",
+                "etf_tokens": etf_data
+            }
+            
+            return json.dumps(result, indent=2)
+        else:
+            return f"Error: Failed to fetch ETF tokens. Status: {response.status_code}"
                 
     except Exception as e:
         logger.error(f"Error getting ETF tokens: {e}")
@@ -568,23 +569,23 @@ async def get_etf_price(ctx: Context, chain_id: str, etf_token_address: str) -> 
             return f"Error: Chain name mapping not found for chain ID {chain_id}"
         
         # Call Paloma DEX API to get custom pricing
-        api_url = f"https://api.palomadex.com/etfapi/v1/customindexprice?chain_id={chain_name}&token_evm_address={etf_token_address}"
+        api_url = f"https://api.palomadx.com/etfapi/v1/customindexprice?chain_id={chain_name}&token_evm_address={etf_token_address}"
         
-        async with paloma_ctx.http_client.get(api_url) as response:
-            if response.status_code == 200:
-                price_data = response.json()
-                
-                result = {
-                    "chain": config.name,
-                    "chain_id": config.chain_id,
-                    "etf_token_address": etf_token_address,
-                    "pricing": price_data,
-                    "timestamp": asyncio.get_event_loop().time()
-                }
-                
-                return json.dumps(result, indent=2)
-            else:
-                return f"Error: Failed to fetch ETF price. Status: {response.status_code}"
+        response = await paloma_ctx.http_client.get(api_url)
+        if response.status_code == 200:
+            price_data = response.json()
+            
+            result = {
+                "chain": config.name,
+                "chain_id": config.chain_id,
+                "etf_token_address": etf_token_address,
+                "pricing": price_data,
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            
+            return json.dumps(result, indent=2)
+        else:
+            return f"Error: Failed to fetch ETF price. Status: {response.status_code}"
                 
     except Exception as e:
         logger.error(f"Error getting ETF price: {e}")
