@@ -592,6 +592,77 @@ async def get_etf_price(ctx: Context, chain_id: str, etf_token_address: str) -> 
         return f"Error getting ETF price: {str(e)}"
 
 @mcp.tool()
+async def get_etf_price_by_symbol(ctx: Context, symbol: str) -> str:
+    """Get ETF price by token symbol from Paloma DEX.
+    
+    Args:
+        symbol: ETF token symbol (e.g., PAGOLD, PABTC2X, PACBOA)
+    
+    Returns:
+        JSON string with ETF price data.
+    """
+    try:
+        paloma_ctx = ctx.request_context.lifespan_context
+        
+        # Call Paloma DEX API to get price by symbol
+        api_url = f"https://api.palomadex.com/etfapi/v1/price?symbol={symbol}"
+        
+        response = await paloma_ctx.http_client.get(api_url)
+        if response.status_code == 200:
+            price_data = response.json()
+            
+            result = {
+                "symbol": symbol,
+                "pricing": price_data,
+                "timestamp": asyncio.get_event_loop().time(),
+                "source": "paloma_dex_api_symbol"
+            }
+            
+            return json.dumps(result, indent=2)
+        else:
+            return f"Error: Failed to fetch ETF price for symbol {symbol}. Status: {response.status_code}"
+                
+    except Exception as e:
+        logger.error(f"Error getting ETF price by symbol: {e}")
+        return f"Error getting ETF price by symbol: {str(e)}"
+
+@mcp.tool()
+async def get_etf_price_by_paloma_denom(ctx: Context, paloma_denom: str) -> str:
+    """Get ETF price by Paloma denomination.
+    
+    Args:
+        paloma_denom: Paloma denomination (e.g., factory/paloma18xrvj2ffxygkmtqwf3tr6fjqk3w0dgg7m6ucwx/palomagold)
+    
+    Returns:
+        JSON string with ETF price data.
+    """
+    try:
+        paloma_ctx = ctx.request_context.lifespan_context
+        
+        # Call Paloma DEX API to get custom pricing by denom
+        # Note: This endpoint might need to be confirmed with Paloma team
+        api_url = f"https://api.palomadex.com/etfapi/v1/customprice?paloma_denom={paloma_denom}"
+        
+        response = await paloma_ctx.http_client.get(api_url)
+        if response.status_code == 200:
+            price_data = response.json()
+            
+            result = {
+                "paloma_denom": paloma_denom,
+                "pricing": price_data,
+                "timestamp": asyncio.get_event_loop().time(),
+                "source": "paloma_dex_api_denom"
+            }
+            
+            return json.dumps(result, indent=2)
+        else:
+            return f"Error: Failed to fetch ETF price for denom {paloma_denom}. Status: {response.status_code}"
+                
+    except Exception as e:
+        logger.error(f"Error getting ETF price by paloma denom: {e}")
+        return f"Error getting ETF price by paloma denom: {str(e)}"
+
+@mcp.tool()
 async def get_etf_balance(ctx: Context, chain_id: str, etf_token_address: str, wallet_address: Optional[str] = None) -> str:
     """Get ETF token balance for a wallet address.
     

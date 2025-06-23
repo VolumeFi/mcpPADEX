@@ -19,7 +19,9 @@ This MCP server provides AI agents with tools to access blockchain data and prep
 
 #### ETF Trading Tools
 - **`get_etf_tokens`**: Get available ETF tokens on a specific chain
-- **`get_etf_price`**: Get buy and sell prices for an ETF token
+- **`get_etf_price`**: Get buy and sell prices for an ETF token (by EVM address)
+- **`get_etf_price_by_symbol`**: Get ETF price by token symbol (recommended)
+- **`get_etf_price_by_paloma_denom`**: Get ETF price by Paloma denomination
 - **`get_etf_balance`**: Get ETF token balance for a wallet address
 - **`buy_etf_token`**: Buy ETF tokens using input tokens (simulation)
 - **`sell_etf_token`**: Sell ETF tokens back to base currency (simulation)
@@ -156,13 +158,33 @@ The server will start and listen for MCP protocol messages via stdin/stdout.
 }
 ```
 
-#### Get ETF Token Price
+#### Get ETF Token Price (by EVM address)
 ```json
 {
   "tool": "get_etf_price",
   "arguments": {
     "chain_id": "1",
     "etf_token_address": "0x1234567890123456789012345678901234567890"
+  }
+}
+```
+
+#### Get ETF Price by Symbol (Recommended)
+```json
+{
+  "tool": "get_etf_price_by_symbol",
+  "arguments": {
+    "symbol": "PAGOLD"
+  }
+}
+```
+
+#### Get ETF Price by Paloma Denomination
+```json
+{
+  "tool": "get_etf_price_by_paloma_denom",
+  "arguments": {
+    "paloma_denom": "factory/paloma18xrvj2ffxygkmtqwf3tr6fjqk3w0dgg7m6ucwx/palomagold"
   }
 }
 ```
