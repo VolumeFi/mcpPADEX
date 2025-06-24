@@ -418,12 +418,65 @@ async def list_supported_chains(ctx: Context) -> str:
         logger.error(f"Error listing chains: {e}")
         return f"Error listing chains: {str(e)}"
 
+async def _get_chain_balance(web3: Web3, address: str, config: ChainConfig, chain_id: str) -> Dict[str, Any]:
+    """Helper function to get balance for a single chain with individual timeout."""
+    try:
+        # Get native balance with individual timeout (5 seconds per chain)
+        native_balance_wei = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(
+                None, lambda: web3.eth.get_balance(address)
+            ),
+            timeout=5.0
+        )
+        native_balance = web3.from_wei(native_balance_wei, 'ether')
+        
+        chain_balances = {
+            "native_balance": str(native_balance),
+            "native_symbol": "ETH" if chain_id == ChainID.ETHEREUM_MAIN else config.name.split()[0]
+        }
+        
+        # Get PUSD balance if configured (with individual timeout)
+        if config.pusd_token:
+            try:
+                pusd_contract = web3.eth.contract(
+                    address=config.pusd_token,
+                    abi=ERC20_ABI
+                )
+                
+                # Wrap contract calls in timeout
+                pusd_balance_wei = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, lambda: pusd_contract.functions.balanceOf(address).call()
+                    ),
+                    timeout=5.0
+                )
+                pusd_decimals = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, lambda: pusd_contract.functions.decimals().call()
+                    ),
+                    timeout=5.0
+                )
+                pusd_balance = pusd_balance_wei / (10 ** pusd_decimals)
+                chain_balances["pusd_balance"] = str(pusd_balance)
+            except asyncio.TimeoutError:
+                chain_balances["pusd_balance"] = "Timeout"
+            except Exception as e:
+                chain_balances["pusd_balance"] = f"Error: {str(e)}"
+        
+        return {config.name: chain_balances}
+        
+    except asyncio.TimeoutError:
+        return {config.name: {"error": "Timeout (5s)"}}
+    except Exception as e:
+        return {config.name: {"error": str(e)}}
+
 @mcp.tool()
-async def get_address_balances(ctx: Context, address: str) -> str:
-    """Get balances for a specific address across all chains.
+async def get_address_balances(ctx: Context, address: str, timeout_seconds: float = 30.0) -> str:
+    """Get balances for a specific address across all chains (concurrent execution).
     
     Args:
         address: Ethereum address to check balances for
+        timeout_seconds: Timeout for the entire operation (default: 30 seconds)
     
     Returns:
         JSON string with balance information across all chains.
@@ -436,44 +489,34 @@ async def get_address_balances(ctx: Context, address: str) -> str:
             return f"Error: Invalid address format: {address}"
         
         address = Web3.to_checksum_address(address)
-        balances = {}
+        
+        # Create tasks for concurrent execution
+        tasks = []
+        chain_names = []
         
         for chain_id, config in CHAIN_CONFIGS.items():
             if chain_id in paloma_ctx.web3_clients:
-                try:
-                    web3 = paloma_ctx.web3_clients[chain_id]
-                    
-                    # Get native balance
-                    native_balance_wei = web3.eth.get_balance(address)
-                    native_balance = web3.from_wei(native_balance_wei, 'ether')
-                    
-                    chain_balances = {
-                        "native_balance": str(native_balance),
-                        "native_symbol": "ETH" if chain_id == ChainID.ETHEREUM_MAIN else config.name.split()[0]
-                    }
-                    
-                    # Get PUSD balance if configured
-                    if config.pusd_token:
-                        try:
-                            pusd_contract = web3.eth.contract(
-                                address=config.pusd_token,
-                                abi=ERC20_ABI
-                            )
-                            pusd_balance_wei = pusd_contract.functions.balanceOf(address).call()
-                            pusd_decimals = pusd_contract.functions.decimals().call()
-                            pusd_balance = pusd_balance_wei / (10 ** pusd_decimals)
-                            chain_balances["pusd_balance"] = str(pusd_balance)
-                        except Exception as e:
-                            chain_balances["pusd_balance"] = f"Error: {str(e)}"
-                    
-                    balances[config.name] = chain_balances
-                    
-                except Exception as e:
-                    balances[config.name] = {"error": str(e)}
+                web3 = paloma_ctx.web3_clients[chain_id]
+                task = _get_chain_balance(web3, address, config, chain_id)
+                tasks.append(task)
+                chain_names.append(config.name)
+        
+        # Execute all balance checks concurrently (no overall timeout, individual chains handle their own timeouts)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Combine results
+        balances = {}
+        for result in results:
+            if isinstance(result, dict):
+                balances.update(result)
+            elif isinstance(result, Exception):
+                logger.error(f"Chain balance check failed: {result}")
         
         result = {
             "address": address,
             "balances": balances,
+            "chains_checked": len(tasks),
+            "timeout_seconds": timeout_seconds,
             "timestamp": asyncio.get_event_loop().time()
         }
         
@@ -482,6 +525,53 @@ async def get_address_balances(ctx: Context, address: str) -> str:
     except Exception as e:
         logger.error(f"Error getting address balances: {e}")
         return f"Error getting address balances: {str(e)}"
+
+@mcp.tool()
+async def get_address_balance_single_chain(ctx: Context, address: str, chain_id: str) -> str:
+    """Get balance for a specific address on a single chain (faster).
+    
+    Args:
+        address: Ethereum address to check balances for
+        chain_id: Chain ID (1, 10, 56, 100, 137, 8453, 42161)
+    
+    Returns:
+        JSON string with balance information for the specified chain.
+    """
+    try:
+        paloma_ctx = ctx.request_context.lifespan_context
+        
+        # Validate address
+        if not Web3.is_address(address):
+            return f"Error: Invalid address format: {address}"
+        
+        if chain_id not in CHAIN_CONFIGS:
+            available_chains = [str(k) for k in CHAIN_CONFIGS.keys()]
+            return f"Error: Unsupported chain ID '{chain_id}'. Available: {available_chains}"
+        
+        if chain_id not in paloma_ctx.web3_clients:
+            config = CHAIN_CONFIGS[chain_id]
+            return f"Error: Web3 client not available for {config.name}"
+        
+        address = Web3.to_checksum_address(address)
+        config = CHAIN_CONFIGS[chain_id]
+        web3 = paloma_ctx.web3_clients[chain_id]
+        
+        # Get balance for single chain
+        chain_balance = await _get_chain_balance(web3, address, config, chain_id)
+        
+        result = {
+            "address": address,
+            "chain": config.name,
+            "chain_id": config.chain_id,
+            "balance": chain_balance[config.name],
+            "timestamp": asyncio.get_event_loop().time()
+        }
+        
+        return json.dumps(result, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Error getting single chain balance: {e}")
+        return f"Error getting single chain balance: {str(e)}"
 
 # Helper function for chain name mapping
 def get_chain_name_for_api(chain_id: str) -> Optional[str]:
