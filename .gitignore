@@ -24,9 +24,12 @@ wheels/
 .DS_Store
 Thumbs.db
 
-#Context
+# Context and reference files
 CLAUDE.md
 ExampleMcpServer.md
 MCP_PYTHON_SDK_REFERENCE.md
 mcp-llms-full-reference.txt
 PALOMA_DEX_MCP_REFERENCE.md
+mcp-files/
+mcp-script-transfer/
+MCP_SCRIPT_REFERENCE_GUIDE.md
